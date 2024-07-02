@@ -1,4 +1,5 @@
 import os
+import sqlalchemy as sa
 
 secretkey = os.environ.get('SECRET_KEY')
 # database configuration
@@ -6,7 +7,14 @@ host = os.getenv('MYSQL_HOST')
 user = os.getenv('MYSQL_USER')
 password = os.getenv('MYSQL_PASSWORD')
 database = os.getenv('MYSQL_DATABASE')
-dburl = f'mysql+pymysql://{user}:{password}@{host}/{database}'
+# dburl = f'mysql+pymysql://{user}:{password}@{host}/{database}'
+dburl = sa.engine.URL.create(
+    drivername='mysql+pymysql',
+    username=user,
+    password=password,
+    host=host,
+    database=database,
+)
 
 adminsemail = [
     'samuel@algorit.ma',
