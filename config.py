@@ -16,9 +16,7 @@ dburl = sa.engine.URL.create(
     database=database,
 )
 
-adminsemail = [
-    'samuel@algorit.ma',
-    'tiara@algorit.ma']
+adminsemail = os.getenv('ADMINS_EMAIL').split(';')
 
 # create the configuration class
 class Config():
