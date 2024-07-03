@@ -1,5 +1,5 @@
 from app import db, cache
-from datetime import datetime
+from datetime import datetime, UTC
 import arrow
 
 # association table
@@ -39,7 +39,7 @@ class Workshop(db.Model):
         name="workshop_category"), nullable=False)
     workshop_instructor = db.Column(db.Integer, db.ForeignKey(
         'employee.id'), nullable=False)
-    workshop_start = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    workshop_start = db.Column(db.DateTime, default=datetime.now(UTC), nullable=False)
     workshop_hours = db.Column(db.Integer, nullable=False)
     workshop_venue = db.Column(db.String(64), nullable=False)
     class_size = db.Column(db.Integer, nullable=False)
