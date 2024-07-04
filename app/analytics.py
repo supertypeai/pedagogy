@@ -7,24 +7,17 @@ import altair as alt
 from altair import expr, datum
 import pandas as pd
 import datetime as datetime
-import pymysql
-from config import host, user, password, database
+from config import engine
 
 @cache.cached(timeout=60*60, key_prefix='hourly_db')
 def getdb():
-    conn = pymysql.connect(
-        host=host,
-        port=int(3306),
-        user=user,
-        passwd=password,
-        db=database)
 
     return pd.read_sql_query(
     "SELECT workshop.id, workshop_name, workshop_category, workshop_instructor, \
         workshop_start, workshop_hours, class_size, e.name, e.active, e.university \
         FROM workshop \
         LEFT JOIN employee as e ON e.id = workshop.workshop_instructor",
-        conn, index_col='id')
+        engine, index_col='id')
 
 df = getdb()
 
@@ -48,8 +41,8 @@ def getuserdb():
 @cache.cached(timeout=86400, key_prefix='accum_g')
 def accum_global():
     dat = df.copy()
-    append_dat = pd.DataFrame([{'workshop_start': datetime.datetime.now(), 'workshop_category': 'Corporate'},
-                               {'workshop_start': datetime.datetime.now(), 'workshop_category': 'Academy'}])
+    append_dat = pd.DataFrame([{'workshop_start': datetime.datetime.now(datetime.UTC), 'workshop_category': 'Corporate'},
+                               {'workshop_start': datetime.datetime.now(datetime.UTC), 'workshop_category': 'Academy'}])
     dat = pd.concat([dat, append_dat], ignore_index=True)
     dat['workshop_category'] = dat['workshop_category'].apply(lambda x: 'Corporate' if (x == 'Corporate') else 'Public').astype('category')
     dat = dat.loc[:,['workshop_start', 'workshop_category', 'workshop_hours', 'class_size']]\
@@ -57,8 +50,8 @@ def accum_global():
         .groupby('workshop_category', observed=True)\
         .resample('W').sum().reset_index()
 
-    dat['workshop hours']=dat.groupby(['workshop_category'])['workshop_hours'].cumsum()
-    dat['students']=dat.groupby(['workshop_category'])['class_size'].cumsum()
+    dat['workshop hours']=dat.groupby(['workshop_category'], observed=False)['workshop_hours'].cumsum()
+    dat['students']=dat.groupby(['workshop_category'], observed=False)['class_size'].cumsum()
     dat = dat.melt(id_vars=['workshop_start', 'workshop_category'],value_vars=['workshop hours', 'students'])
 
     chart = alt.Chart(dat).mark_area().encode(
@@ -239,16 +232,16 @@ def person_class_bar():
 def person_vs_area():
     dat_ori = getuserdb()
     dat = dat_ori.loc[dat_ori.this_user == True,:].copy()
-    append_dat = pd.DataFrame([{'workshop_start': datetime.datetime.now(), 'workshop_category': 'Corporate'},
-                               {'workshop_start': datetime.datetime.now(), 'workshop_category': 'Academy'}])
+    append_dat = pd.DataFrame([{'workshop_start': datetime.datetime.now(datetime.UTC), 'workshop_category': 'Corporate'},
+                               {'workshop_start': datetime.datetime.now(datetime.UTC), 'workshop_category': 'Academy'}])
     dat = pd.concat([dat, append_dat], ignore_index=True)
     dat['workshop_category'] = dat['workshop_category'].apply(lambda x: 'Corporate' if (x == 'Corporate') else 'Public').astype('category')
     dat = dat.loc[:,['workshop_start', 'workshop_category', 'workshop_hours', 'class_size']]\
         .set_index('workshop_start')\
-        .groupby('workshop_category')\
+        .groupby('workshop_category', observed=False)\
         .resample('W').sum().reset_index()
-    dat['workshop hours']=dat.groupby(['workshop_category'])['workshop_hours'].cumsum()
-    dat['students']=dat.groupby(['workshop_category'])['class_size'].cumsum()
+    dat['workshop hours']=dat.groupby(['workshop_category'], observed=False)['workshop_hours'].cumsum()
+    dat['students']=dat.groupby(['workshop_category'], observed=False)['class_size'].cumsum()
     dat = dat.melt(id_vars=['workshop_start', 'workshop_category'],value_vars=['workshop hours', 'students'])
     
     chart = alt.Chart(dat).mark_area().encode(
@@ -272,12 +265,6 @@ def person_vs_area():
 @app.route('/data/instructor_breakdown')
 @cache.cached(timeout=86400*7, key_prefix='ib')
 def instructor_breakdown():
-    conn = pymysql.connect(
-        host=host,
-        port=int(3306),
-        user=user,
-        passwd=password,
-        db=database)
     # Getting Responses Data
     q = """ SELECT response.*, workshop_category, name
             FROM response
@@ -288,7 +275,7 @@ def instructor_breakdown():
         """
     responses = pd.read_sql_query(
         q,
-        conn,
+        engine,
         index_col='id'
     )
     numeric_cols = []
@@ -299,7 +286,7 @@ def instructor_breakdown():
     resp_nw['total'] = resp_nw.iloc[:,1:].mean(axis=1).round(2)
     resp_nwm = pd.melt(resp_nw.iloc[:,1:].reset_index(), id_vars='name')
 
-    multi = alt.selection_multi(fields=['name'], on='click')
+    multi = alt.selection_point(fields=['name'], on='click')
     brush = alt.selection_interval()
     color = alt.condition(multi, alt.Color('name:N',  legend=None), alt.value('lightgray'))
     color2 = alt.condition(brush, alt.Color('name:N',  legend=None), alt.value('lightgray'))
@@ -380,14 +367,14 @@ def instructor_breakdown():
 @app.route('/data/team_leadinst_line')
 def team_leadinst_line():
     dat = df.copy()
-    sixmonths = datetime.datetime.now() - datetime.timedelta(weeks=26)
-    threemonths = datetime.datetime.now() - datetime.timedelta(weeks=13)
+    sixmonths = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=26)
+    threemonths = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=13)
     dat = dat.loc[(dat.workshop_start >= sixmonths) &
             (dat.active == 1) & (dat.name != 'Capstone'), :]
     dat['workshop_period'] = dat.loc[:, 'workshop_start'].apply(lambda x: 'Last 3 months' if (x >= threemonths) else '3 months ago')
     dat = dat.loc[:,['name','workshop_period','workshop_hours']].groupby(['name','workshop_period']).count().reset_index()
     dat.columns = ['name', 'workshop_period', 'wh_count']
-    dat['diff'] = dat.groupby('name')['wh_count'].diff().fillna(method='bfill', limit=1)
+    dat['diff'] = dat.groupby('name')['wh_count'].diff().bfill(limit=1)
 
     line = alt.Chart(data=dat, title='Lead Instructor Roles').mark_line().encode(
         x=alt.X('wh_count', axis=alt.Axis(title='Workshops in the last 6 months')),
@@ -471,17 +458,17 @@ def factory_homepage():
 @cache.cached(timeout=60*60, key_prefix='fa_stats')
 def factory_analytics():
     dat = df.copy()
-    yearago = datetime.datetime.now() - datetime.timedelta(weeks=52)
-    sixmonths = datetime.datetime.now() - datetime.timedelta(weeks=26)
-    threemonths = datetime.datetime.now() - datetime.timedelta(weeks=13)
-    amonth = datetime.datetime.now() - datetime.timedelta(days=30)
+    yearago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=52)
+    sixmonths = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=26)
+    threemonths = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=13)
+    # amonth = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=30)
 
     dat_6m = dat.loc[(dat.workshop_start >= sixmonths) &
             (dat.active == 1) & (dat.name != 'Capstone'), :]
     dat_6m.loc[:, 'workshop_period'] = dat_6m.loc[:, 'workshop_start'].apply(lambda x: 'Last 3 months' if (x >= threemonths) else '3 months ago')
     dat_6m = dat_6m.loc[:,['name','workshop_period','workshop_hours']].groupby(['name','workshop_period']).count().reset_index()
     dat_6m.columns = ['name', 'workshop_period', 'wh_count']
-    dat_6m.loc[:, 'diff'] = dat_6m.groupby('name')['wh_count'].diff().fillna(method='bfill', limit=1)
+    dat_6m.loc[:, 'diff'] = dat_6m.groupby('name')['wh_count'].diff().bfill(limit=1)
     df_sum = pd.DataFrame(dat_6m.groupby('name').wh_count.sum())
     max_wh = df_sum.wh_count.max()
     min_wh = df_sum.wh_count.min()
