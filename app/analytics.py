@@ -193,7 +193,7 @@ def person_contrib_area():
             y=alt.Y('sum(contrib)', axis=alt.Axis(title='Activities'))
         ).properties(width=450)
     lower = alt.Chart(dat).mark_rect(color='#75b3cacc').encode(
-        x=alt.X("workshop_start:T", axis=alt.Axis(title='Interval Selector'), scale={'domain':brush})
+        x=alt.X("workshop_start:T", axis=alt.Axis(title='Interval Selector'))
     ).add_params(
         brush
     ).properties(width=450)
