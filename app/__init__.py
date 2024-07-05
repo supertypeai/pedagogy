@@ -39,6 +39,7 @@ def default_pedagogy_theme():
 
 alt.themes.register('default_pedagogy_theme', default_pedagogy_theme)
 alt.themes.enable('default_pedagogy_theme')
+alt.renderers.set_embed_options(actions=False)
 
 # let Flask-Login know which page (function name) handles login
 login.login_view = 'login'

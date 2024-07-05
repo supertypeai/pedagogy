@@ -69,7 +69,7 @@ def accum_global():
         tooltip=['variable', 'value:Q']
     ).properties(
         width=350,
-        height=300
+        height=350
     ).configure_axis(
         labelColor='#bbc6cbe6',
         titleColor='#bbc6cbe6', 
@@ -146,7 +146,7 @@ def punchcode():
         column=alt.Column('workshop_category:O', title=None, sort="descending", 
             header=alt.Header(titleColor='#bbc6cbe6', labelColor='#bbc6cbe6', labelAngle=0, titleFontSize=40, titleAngle=30))
     ).properties(
-        width=300, height=320
+        width=300, height=dat.name.count() * 0.3
     ).configure_axis( 
         labelColor='#bbc6cbe6', titleColor='#bbc6cbe6', grid=False
     )
@@ -444,7 +444,7 @@ def factory_homepage():
             'name').sum().sort_values(
                 by='class_size', 
                 ascending=False)
-                .head(10)
+                .head(20)
                 .rename_axis(None)
                 .rename(
                     columns={'workshop_hours':'Total Hours',
