@@ -10,7 +10,7 @@ password = os.getenv('POSTGRES_PASSWORD')
 database = os.getenv('POSTGRES_DATABASE')
 dbendpoint = os.getenv('DB_ENDPOINT')
 
-options = '-c search_path=dbo,pedagogy'
+options = '-c search_path=pedagogy'
 if dbendpoint is not None:
     options = options + f' endpoint={dbendpoint}'
 
