@@ -68,8 +68,8 @@ def accum_global():
         ),
         tooltip=['variable', 'value:Q']
     ).properties(
-        width=350,
-        height=350
+        width=400,
+        height=400
     ).configure_axis(
         labelColor='#bbc6cbe6',
         titleColor='#bbc6cbe6', 
@@ -86,6 +86,7 @@ def accum_global_line():
     dat = dat[['workshop_start', 'class_size']].sort_values(by='workshop_start')
     dat['cumsum'] = dat['class_size'].cumsum()
 
+    chart_width = 600
     brush = alt.selection_interval(encodings=['x'])
     # Create a selection that chooses the nearest point & selects based on x-value
     nearest = alt.selection_point(nearest=True, on='mouseover',
@@ -99,7 +100,7 @@ def accum_global_line():
         opacity=alt.value(0)
     ).properties(
         height=300,
-        width=350
+        width=chart_width
     ).add_params(
         nearest
     )
@@ -115,13 +116,13 @@ def accum_global_line():
         nearest
     )
 
-    upper = alt.layer(line, selectors, points, rules, text, data=dat, width=350)
+    upper = alt.layer(line, selectors, points, rules, text, data=dat, width=chart_width)
     lower = alt.Chart().mark_area(color='#75b3cacc').encode(
         x=alt.X("workshop_start:T", axis=alt.Axis(title='')),
         y=alt.Y("cumsum", axis=alt.Axis(title=''))
     ).properties(
         height=30,
-        width=350
+        width=chart_width
     ).add_params(
         brush
     )
@@ -146,7 +147,7 @@ def punchcode():
         column=alt.Column('workshop_category:O', title=None, sort="descending", 
             header=alt.Header(titleColor='#bbc6cbe6', labelColor='#bbc6cbe6', labelAngle=0, titleFontSize=40, titleAngle=30))
     ).properties(
-        width=300, height=dat.name.count() * 0.3
+        width=400, height=dat.name.count() * 0.3
     ).configure_axis( 
         labelColor='#bbc6cbe6', titleColor='#bbc6cbe6', grid=False
     )
