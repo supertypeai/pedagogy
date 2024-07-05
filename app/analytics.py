@@ -117,9 +117,7 @@ def accum_global_line():
 
     upper = alt.layer(line, selectors, points, rules, text, data=dat, width=350)
     lower = alt.Chart().mark_area(color='#75b3cacc').encode(
-        x=alt.X("workshop_start:T", axis=alt.Axis(title=''), scale={
-            'domain': brush
-        }),
+        x=alt.X("workshop_start:T", axis=alt.Axis(title='')),
         y=alt.Y("cumsum", axis=alt.Axis(title=''))
     ).properties(
         height=30,
