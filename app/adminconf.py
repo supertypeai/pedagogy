@@ -14,7 +14,7 @@ class AdminModelView(ModelView):
 
     def is_accessible(self):
         return (current_user.is_authenticated and
-                current_user.email in app.config['ADMINS'])
+                current_user.leadership is True)
 
     def inaccessible_callback(self, name, **kwargs):
         # redirect to login page if user doesn't have access
@@ -63,11 +63,15 @@ class WorkshopView(ModelView):
 class ResponseView(ModelView):
     def is_accessible(self):
         return (current_user.is_authenticated and
-                current_user.email in app.config['ADMINS'])
+                current_user.leadership is True)
 
     def inaccessible_callback(self, name, **kwargs):
         # redirect to login page if user doesn't have access
         return redirect(url_for('login', next=request.url))
+
+    column_display_pk = True
+    column_default_sort = ('id', False)
+    can_export = True
 
 
 class AnalyticsView(BaseView):

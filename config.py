@@ -29,8 +29,6 @@ dburl = sa.engine.URL.create(
 
 engine = sa.create_engine(dburl)
 
-adminsemail = os.getenv('ADMINS_EMAIL').split(';')
-
 # create the configuration class
 class Config():
     SECRET_KEY = secretkey or 'l3arn2t3ach'
@@ -47,7 +45,6 @@ class Config():
     MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS') is not None
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
-    ADMINS = adminsemail
     CACHE_TYPE = 'simple'
     CACHE_DEFAULT_TIMEOUT = 86400 # 24 hours = 86400
 
