@@ -7,6 +7,7 @@ from flask_admin.form import SecureForm
 from flask_admin.contrib.sqla import ModelView
 from flask_login import current_user
 
+
 class AdminModelView(ModelView):
     # uses the WTForm SessionCSRF class to generate and validate tokens
     form_base_class = SecureForm
@@ -14,9 +15,16 @@ class AdminModelView(ModelView):
     def is_accessible(self):
         return (current_user.is_authenticated and
                 current_user.email in app.config['ADMINS'])
+
     def inaccessible_callback(self, name, **kwargs):
         # redirect to login page if user doesn't have access
         return redirect(url_for('login', next=request.url))
+
+    # remove the timezone info from the workshop_start column view
+    column_formatters = dict(
+        last_seen=lambda v, c, m, p: m.last_seen.replace(tzinfo=None)
+    )
+
 
 class EmployeeView(ModelView):
     def is_accessible(self):
@@ -44,6 +52,13 @@ class WorkshopView(ModelView):
     create_modal = True
     edit_modal = True
     can_export = True
+    column_display_pk = True
+
+    # remove the timezone info from the workshop_start column view
+    column_formatters = dict(
+        workshop_start=lambda v, c, m, p: m.workshop_start.replace(tzinfo=None)
+    )
+
 
 class ResponseView(ModelView):
     def is_accessible(self):
@@ -67,6 +82,7 @@ class AnalyticsView(BaseView):
     @expose('/')
     def index(self):
         return self.render('admin/analytics_index.html', user=current_user)
+
 
 admin.add_view(AdminModelView(User, db.session))
 admin.add_view(EmployeeView(Employee, db.session))
