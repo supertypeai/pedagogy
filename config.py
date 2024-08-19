@@ -1,16 +1,33 @@
 import os
+import sqlalchemy as sa
 
 secretkey = os.environ.get('SECRET_KEY')
 # database configuration
-host = os.getenv('MYSQL_HOST')
-user = os.getenv('MYSQL_USER')
-password = os.getenv('MYSQL_PASSWORD')
-database = os.getenv('MYSQL_DATABASE')
-dburl = f'mysql+pymysql://{user}:{password}@{host}/{database}'
+host = os.getenv('POSTGRES_HOST')
+port = os.getenv('POSTGRES_PORT', '5432')
+user = os.getenv('POSTGRES_USER')
+password = os.getenv('POSTGRES_PASSWORD')
+database = os.getenv('POSTGRES_DATABASE')
+dbendpoint = os.getenv('DB_ENDPOINT')
 
-adminsemail = [
-    'samuel@algorit.ma',
-    'tiara@algorit.ma']
+options = '-c search_path=pedagogy'
+if dbendpoint is not None:
+    options = options + f' endpoint={dbendpoint}'
+
+dburl = sa.engine.URL.create(
+    drivername='postgresql+psycopg',
+    username=user,
+    password=password,
+    host=host,
+    port=int(port),
+    database=database,
+    query={
+        'sslmode': 'require',
+        'options': options
+    }
+)
+
+engine = sa.create_engine(dburl)
 
 # create the configuration class
 class Config():
@@ -28,7 +45,6 @@ class Config():
     MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS') is not None
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
-    ADMINS = adminsemail
     CACHE_TYPE = 'simple'
     CACHE_DEFAULT_TIMEOUT = 86400 # 24 hours = 86400
 

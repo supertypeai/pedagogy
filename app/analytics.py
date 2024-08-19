@@ -1,3 +1,4 @@
+import numpy as np
 from flask import g
 from flask_login import current_user
 from app import app, cache
@@ -6,24 +7,17 @@ import altair as alt
 from altair import expr, datum
 import pandas as pd
 import datetime as datetime
-import pymysql
-from config import host, user, password, database
+from config import engine
 
 @cache.cached(timeout=60*60, key_prefix='hourly_db')
 def getdb():
-    conn = pymysql.connect(
-        host=host,
-        port=int(3306),
-        user=user,
-        passwd=password,
-        db=database)
 
     return pd.read_sql_query(
     "SELECT workshop.id, workshop_name, workshop_category, workshop_instructor, \
         workshop_start, workshop_hours, class_size, e.name, e.active, e.university \
         FROM workshop \
         LEFT JOIN employee as e ON e.id = workshop.workshop_instructor",
-        conn, index_col='id')
+        engine, index_col='id')
 
 df = getdb()
 
@@ -47,16 +41,17 @@ def getuserdb():
 @cache.cached(timeout=86400, key_prefix='accum_g')
 def accum_global():
     dat = df.copy()
-    dat = dat.append({'workshop_start': datetime.datetime.now(), 'workshop_category': 'Corporate'}, ignore_index=True)
-    dat = dat.append({'workshop_start': datetime.datetime.now(), 'workshop_category': 'Academy'}, ignore_index=True)
+    append_dat = pd.DataFrame([{'workshop_start': datetime.datetime.now(datetime.UTC), 'workshop_category': 'Corporate'},
+                               {'workshop_start': datetime.datetime.now(datetime.UTC), 'workshop_category': 'Academy'}])
+    dat = pd.concat([dat, append_dat], ignore_index=True)
     dat['workshop_category'] = dat['workshop_category'].apply(lambda x: 'Corporate' if (x == 'Corporate') else 'Public').astype('category')
     dat = dat.loc[:,['workshop_start', 'workshop_category', 'workshop_hours', 'class_size']]\
         .set_index('workshop_start')\
-        .groupby('workshop_category')\
+        .groupby('workshop_category', observed=True)\
         .resample('W').sum().reset_index()
 
-    dat['workshop hours']=dat.groupby(['workshop_category'])['workshop_hours'].cumsum()
-    dat['students']=dat.groupby(['workshop_category'])['class_size'].cumsum()
+    dat['workshop hours']=dat.groupby(['workshop_category'], observed=False)['workshop_hours'].cumsum()
+    dat['students']=dat.groupby(['workshop_category'], observed=False)['class_size'].cumsum()
     dat = dat.melt(id_vars=['workshop_start', 'workshop_category'],value_vars=['workshop hours', 'students'])
 
     chart = alt.Chart(dat).mark_area().encode(
@@ -72,7 +67,10 @@ def accum_global():
             legend=None
         ),
         tooltip=['variable', 'value:Q']
-    ).properties(width=350).configure_axis(
+    ).properties(
+        width=400,
+        height=400
+    ).configure_axis(
         labelColor='#bbc6cbe6',
         titleColor='#bbc6cbe6', 
         grid=False
@@ -88,18 +86,22 @@ def accum_global_line():
     dat = dat[['workshop_start', 'class_size']].sort_values(by='workshop_start')
     dat['cumsum'] = dat['class_size'].cumsum()
 
-    brush = alt.selection(type='interval', encodings=['x'])
+    chart_width = 600
+    brush = alt.selection_interval(encodings=['x'])
     # Create a selection that chooses the nearest point & selects based on x-value
-    nearest = alt.selection(type='single', nearest=True, on='mouseover',
-                            fields=['workshop_start'], empty='none')
+    nearest = alt.selection_point(nearest=True, on='mouseover',
+                            fields=['workshop_start'], empty=False)
     line = alt.Chart().mark_line(color='#cccccc', interpolate='basis').encode(
-            x=alt.X("workshop_start:T", axis=alt.Axis(title='', grid=False),scale={'domain': brush.ref()}),
+            x=alt.X("workshop_start:T", axis=alt.Axis(title='', grid=False),scale={'domain': brush}),
             y=alt.Y("cumsum", axis=alt.Axis(title='Total Students', grid=False))
     )
     selectors = alt.Chart(dat).mark_point().encode(
         x=alt.X("workshop_start:T"),
         opacity=alt.value(0)
-    ).add_selection(
+    ).properties(
+        height=300,
+        width=chart_width
+    ).add_params(
         nearest
     )
     points = line.mark_point().encode(
@@ -114,16 +116,14 @@ def accum_global_line():
         nearest
     )
 
-    upper = alt.layer(line, selectors, points, rules, text, data=dat, width=350)
+    upper = alt.layer(line, selectors, points, rules, text, data=dat, width=chart_width)
     lower = alt.Chart().mark_area(color='#75b3cacc').encode(
-            x=alt.X("workshop_start:T", axis=alt.Axis(title=''), scale={
-                'domain':brush.ref()
-            }),
-            y=alt.Y("cumsum", axis=alt.Axis(title=''))
-        ).properties(
+        x=alt.X("workshop_start:T", axis=alt.Axis(title='')),
+        y=alt.Y("cumsum", axis=alt.Axis(title=''))
+    ).properties(
         height=30,
-        width=350
-    ).add_selection(
+        width=chart_width
+    ).add_params(
         brush
     )
 
@@ -145,9 +145,9 @@ def punchcode():
         y='name:O',
         size=alt.Size('sum(contrib):Q', legend=None),
         column=alt.Column('workshop_category:O', title=None, sort="descending", 
-            header=alt.Header(titleColor='#bbc6cbe6', labelColor='#bbc6cbe6', labelAngle=30, titleFontSize=40, titleAngle=30))
+            header=alt.Header(titleColor='#bbc6cbe6', labelColor='#bbc6cbe6', labelAngle=0, titleFontSize=40, titleAngle=30))
     ).properties(
-        width=300, height=320
+        width=400, height=dat.name.count() * 0.3
     ).configure_axis( 
         labelColor='#bbc6cbe6', titleColor='#bbc6cbe6', grid=False
     )
@@ -160,6 +160,8 @@ def category_bars():
         x=alt.X('sum(workshop_hours):Q', title='Accumulated Hours'),
         y=alt.Y('workshop_category:O', title=''),
         tooltip=['sum(workshop_hours):Q', 'workshop_category:O']
+    ).properties(
+        width=400
     )
     return chart.to_json()
 
@@ -179,19 +181,22 @@ def person_contrib_area():
     dat = dat_ori.loc[dat_ori.this_user == True,:].copy()
     dat['contrib'] = dat['workshop_hours'] * dat['class_size']
 
-    brush = alt.selection(type='interval', encodings=['x'])
+    brush = alt.selection_interval(encodings=['x'])
     upper = alt.Chart(dat).mark_area(
         clip=True,
         color='#7c98ae',
         opacity=1,
         interpolate='monotone'
         ).encode(
-            x=alt.X("workshop_start:T", axis=alt.Axis(title=''), scale={'domain':brush.ref()}),
+            x=alt.X("workshop_start:T", axis=alt.Axis(title=''), scale={'domain':brush}),
             y=alt.Y('sum(contrib)', axis=alt.Axis(title='Activities'))
-        ).properties(width=450)
+        ).properties(
+            height=300,
+            width=450
+        )
     lower = alt.Chart(dat).mark_rect(color='#75b3cacc').encode(
-        x=alt.X("workshop_start:T", axis=alt.Axis(title='Interval Selector'), scale={'domain':brush.ref()})
-    ).add_selection(
+        x=alt.X("workshop_start:T", axis=alt.Axis(title='Interval Selector'))
+    ).add_params(
         brush
     ).properties(width=450)
     chart = alt.vconcat(upper, lower, data=dat).configure_axis(
@@ -229,15 +234,16 @@ def person_class_bar():
 def person_vs_area():
     dat_ori = getuserdb()
     dat = dat_ori.loc[dat_ori.this_user == True,:].copy()
-    dat = dat.append({'workshop_start': datetime.datetime.now(), 'workshop_category': 'Corporate'}, ignore_index=True)
-    dat = dat.append({'workshop_start': datetime.datetime.now(), 'workshop_category': 'Academy'}, ignore_index=True)
+    append_dat = pd.DataFrame([{'workshop_start': datetime.datetime.now(datetime.UTC), 'workshop_category': 'Corporate'},
+                               {'workshop_start': datetime.datetime.now(datetime.UTC), 'workshop_category': 'Academy'}])
+    dat = pd.concat([dat, append_dat], ignore_index=True)
     dat['workshop_category'] = dat['workshop_category'].apply(lambda x: 'Corporate' if (x == 'Corporate') else 'Public').astype('category')
     dat = dat.loc[:,['workshop_start', 'workshop_category', 'workshop_hours', 'class_size']]\
         .set_index('workshop_start')\
-        .groupby('workshop_category')\
+        .groupby('workshop_category', observed=False)\
         .resample('W').sum().reset_index()
-    dat['workshop hours']=dat.groupby(['workshop_category'])['workshop_hours'].cumsum()
-    dat['students']=dat.groupby(['workshop_category'])['class_size'].cumsum()
+    dat['workshop hours']=dat.groupby(['workshop_category'], observed=False)['workshop_hours'].cumsum()
+    dat['students']=dat.groupby(['workshop_category'], observed=False)['class_size'].cumsum()
     dat = dat.melt(id_vars=['workshop_start', 'workshop_category'],value_vars=['workshop hours', 'students'])
     
     chart = alt.Chart(dat).mark_area().encode(
@@ -251,6 +257,7 @@ def person_vs_area():
         ),
         tooltip=['variable', 'value:Q']
     ).properties(
+        height=300,
         width=250
     ).configure_axis(
         grid=False
@@ -261,12 +268,6 @@ def person_vs_area():
 @app.route('/data/instructor_breakdown')
 @cache.cached(timeout=86400*7, key_prefix='ib')
 def instructor_breakdown():
-    conn = pymysql.connect(
-        host=host,
-        port=int(3306),
-        user=user,
-        passwd=password,
-        db=database)
     # Getting Responses Data
     q = """ SELECT response.*, workshop_category, name
             FROM response
@@ -277,15 +278,19 @@ def instructor_breakdown():
         """
     responses = pd.read_sql_query(
         q,
-        conn,
+        engine,
         index_col='id'
     )
-    resp_nw = responses[responses['workshop_category'] != 'Weekend'].groupby('name').agg('mean').round(2).sort_values('knowledge', ascending=False)
+    numeric_cols = []
+    for column, coldtype in responses.dtypes.items():
+        if np.issubdtype(coldtype, np.number):
+            numeric_cols.append(column)
+    resp_nw = responses[responses['workshop_category'] != 'Weekend'].groupby('name')[numeric_cols].agg('mean').round(2).sort_values('knowledge', ascending=False)
     resp_nw['total'] = resp_nw.iloc[:,1:].mean(axis=1).round(2)
     resp_nwm = pd.melt(resp_nw.iloc[:,1:].reset_index(), id_vars='name')
 
-    multi = alt.selection_multi(fields=['name'], on='click')
-    brush = alt.selection(type='interval')
+    multi = alt.selection_point(fields=['name'], on='click')
+    brush = alt.selection_interval()
     color = alt.condition(multi, alt.Color('name:N',  legend=None), alt.value('lightgray'))
     color2 = alt.condition(brush, alt.Color('name:N',  legend=None), alt.value('lightgray'))
     point = alt.Chart(df).mark_circle(size=60).encode(
@@ -298,7 +303,8 @@ def instructor_breakdown():
     ).transform_filter(
         brush
     ).properties(
-        width=600
+        width=600,
+        height=300
     ).interactive()
     bar = alt.Chart(df).mark_bar().encode(
         x=alt.X('sum(workshop_hours):Q', title='Accumulated Hours'),
@@ -309,6 +315,8 @@ def instructor_breakdown():
         brush
     ).transform_filter(
         multi
+    ).properties(
+        width=400
     )
     box = alt.Chart(df).mark_rect().encode(
         x=alt.X('class_size:Q', bin=alt.Bin(maxbins=15)),
@@ -318,18 +326,21 @@ def instructor_breakdown():
         tooltip=['workshop_name:O', 'class_size:Q']
     ).transform_filter(
         multi
-    ).add_selection(
+    ).add_params(
         brush
+    ).properties(
+        width=400,
+        height=300
     )
     picker = alt.Chart(df).mark_rect().encode(
         y=alt.Y('name:N'),
         color=color, 
-    ).add_selection(
+    ).add_params(
         multi
     )
 
     a = alt.Chart(resp_nwm).mark_square(size=40).encode(
-        x=alt.X('variable:N', scale=alt.Scale(rangeStep=80), axis=alt.Axis(labelAngle=0)),
+        x=alt.X('variable:N', axis=alt.Axis(labelAngle=0)),
         y=alt.Y('value'),
         color=alt.Color('name', legend=None),
         tooltip=['name','value']
@@ -337,6 +348,9 @@ def instructor_breakdown():
         value=expr.round(expr.exp(datum.value))
     ).transform_filter(
         multi
+    ).properties(
+        width=600,
+        height=300
     )
 
     b = a.mark_line(opacity=0.8, interpolate='monotone').encode(
@@ -356,14 +370,14 @@ def instructor_breakdown():
 @app.route('/data/team_leadinst_line')
 def team_leadinst_line():
     dat = df.copy()
-    sixmonths = datetime.datetime.now() - datetime.timedelta(weeks=26)
-    threemonths = datetime.datetime.now() - datetime.timedelta(weeks=13)
+    sixmonths = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=26)
+    threemonths = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=13)
     dat = dat.loc[(dat.workshop_start >= sixmonths) &
             (dat.active == 1) & (dat.name != 'Capstone'), :]
     dat['workshop_period'] = dat.loc[:, 'workshop_start'].apply(lambda x: 'Last 3 months' if (x >= threemonths) else '3 months ago')
     dat = dat.loc[:,['name','workshop_period','workshop_hours']].groupby(['name','workshop_period']).count().reset_index()
     dat.columns = ['name', 'workshop_period', 'wh_count']
-    dat['diff'] = dat.groupby('name').diff().fillna(method='bfill', limit=1)
+    dat['diff'] = dat.groupby('name')['wh_count'].diff().bfill(limit=1)
 
     line = alt.Chart(data=dat, title='Lead Instructor Roles').mark_line().encode(
         x=alt.X('wh_count', axis=alt.Axis(title='Workshops in the last 6 months')),
@@ -435,7 +449,7 @@ def factory_homepage():
             'name').sum().sort_values(
                 by='class_size', 
                 ascending=False)
-                .head(10)
+                .head(20)
                 .rename_axis(None)
                 .rename(
                     columns={'workshop_hours':'Total Hours',
@@ -447,17 +461,17 @@ def factory_homepage():
 @cache.cached(timeout=60*60, key_prefix='fa_stats')
 def factory_analytics():
     dat = df.copy()
-    yearago = datetime.datetime.now() - datetime.timedelta(weeks=52)
-    sixmonths = datetime.datetime.now() - datetime.timedelta(weeks=26)
-    threemonths = datetime.datetime.now() - datetime.timedelta(weeks=13)
-    amonth = datetime.datetime.now() - datetime.timedelta(days=30)
+    yearago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=52)
+    sixmonths = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=26)
+    threemonths = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=13)
+    # amonth = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=30)
 
     dat_6m = dat.loc[(dat.workshop_start >= sixmonths) &
-            (dat.active == 1) & (dat.name != 'Capstone'), :]    
-    dat_6m['workshop_period'] = dat_6m.loc[:, 'workshop_start'].apply(lambda x: 'Last 3 months' if (x >= threemonths) else '3 months ago')
+            (dat.active == 1) & (dat.name != 'Capstone'), :]
+    dat_6m.loc[:, 'workshop_period'] = dat_6m.loc[:, 'workshop_start'].apply(lambda x: 'Last 3 months' if (x >= threemonths) else '3 months ago')
     dat_6m = dat_6m.loc[:,['name','workshop_period','workshop_hours']].groupby(['name','workshop_period']).count().reset_index()
     dat_6m.columns = ['name', 'workshop_period', 'wh_count']
-    dat_6m['diff'] = dat_6m.groupby('name').diff().fillna(method='bfill', limit=1)
+    dat_6m.loc[:, 'diff'] = dat_6m.groupby('name')['wh_count'].diff().bfill(limit=1)
     df_sum = pd.DataFrame(dat_6m.groupby('name').wh_count.sum())
     max_wh = df_sum.wh_count.max()
     min_wh = df_sum.wh_count.min()

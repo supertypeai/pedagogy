@@ -1,4 +1,4 @@
-from flask import render_template, flash, redirect, url_for, g
+from flask import render_template, flash, redirect, url_for, g, send_from_directory
 from flask_login import current_user, login_user, logout_user, login_required
 from app import app, db, cache
 from app.analytics import factory_homepage, factory_accomplishment, factory_analytics
@@ -6,15 +6,21 @@ from app.users import User
 from app.models import Employee, Workshop, Response
 from app.forms import LoginForm, RegistrationForm, SurveyForm, ResetPasswordRequestForm, ResetPasswordForm
 from app.email import send_pw_reset_email
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy import func
+import os
 
 @app.before_request
 def before_request():
     g.employee = None
     if current_user.is_authenticated:
-        current_user.last_seen = datetime.utcnow()
+        current_user.last_seen = datetime.now(UTC)
         g.employee = Employee.query.filter_by(email=current_user.email).first()
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static/img'),
+                               'favicon.webp', mimetype='image/webp')
 
 @app.route('/')
 @app.route('/index')
@@ -124,7 +130,7 @@ def qualitative(id, page_num):
 @app.route('/survey/<int:workshop_id>', methods=['GET', 'POST'])
 def rate(workshop_id):
     workshop = Workshop.query.filter_by(id=workshop_id).first()
-    timediff = datetime.utcnow() - workshop.workshop_start
+    timediff = datetime.now(UTC) - workshop.workshop_start
     if workshop is None or timediff.days > 10:
         flash('Workshop survey is not available at the moment!')
         return redirect(url_for('index'))

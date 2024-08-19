@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
@@ -11,7 +11,7 @@ class User(UserMixin, db.Model):
         'Employee', backref=db.backref('sigin_email')
     )
     password_hash = db.Column(db.String(128))
-    last_seen = db.Column(db.DateTime, default=datetime.utcnow)
+    last_seen = db.Column(db.DateTime, default=datetime.now(UTC))
     leadership = db.Column(db.Boolean, default=False, nullable=False)
     analyst = db.Column(db.Boolean, nullable=False)
 
@@ -19,7 +19,7 @@ class User(UserMixin, db.Model):
         return '<User {}>'.format(self.email)
 
     def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+        self.password_hash = generate_password_hash(password, 'pbkdf2')
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
@@ -27,7 +27,7 @@ class User(UserMixin, db.Model):
     def get_reset_password_token(self, expires_in=1200):
         return jwt.encode(
             {'reset_password': self.id, 'exp': datetime.now().timestamp() + expires_in},
-            app.config['SECRET_KEY'], algorithm='HS256').decode('utf-8')
+            app.config['SECRET_KEY'], algorithm='HS256')
 
     @staticmethod
     def verify_reset_password_token(token):
