@@ -1,6 +1,6 @@
 from flask import redirect, url_for, request
 from app import app, admin, db
-from app.models import Employee, Workshop, Response
+from app.models import Employee, Workshop, Response, Assistants
 from app.users import User
 from flask_admin import BaseView, expose
 from flask_admin.form import SecureForm
@@ -9,9 +9,6 @@ from flask_login import current_user
 
 
 class AdminModelView(ModelView):
-    # uses the WTForm SessionCSRF class to generate and validate tokens
-    form_base_class = SecureForm
-
     def is_accessible(self):
         return (current_user.is_authenticated and
                 current_user.leadership is True)
@@ -19,6 +16,11 @@ class AdminModelView(ModelView):
     def inaccessible_callback(self, name, **kwargs):
         # redirect to login page if user doesn't have access
         return redirect(url_for('login', next=request.url))
+
+
+class UserView(AdminModelView):
+    # uses the WTForm SessionCSRF class to generate and validate tokens
+    form_base_class = SecureForm
 
     # remove the timezone info from the workshop_start column view
     column_formatters = dict(
@@ -26,29 +28,20 @@ class AdminModelView(ModelView):
     )
 
 
-class EmployeeView(ModelView):
-    def is_accessible(self):
-        return (current_user.is_authenticated and
-                current_user.leadership is True)
-
-    def inaccessible_callback(self, name, **kwargs):
-        # redirect to login page if user doesn't have access
-        return redirect(url_for('login', next=request.url))
-
+class EmployeeView(AdminModelView):
     column_searchable_list = ['name', 'email', 'degree', 'university']
     column_editable_list = ['email', 'active', 'degree', 'university', 'assigned_ta']
     column_filters = ['email', 'active', 'join_date']
 
 
-class WorkshopView(ModelView):
-    def is_accessible(self):
-        return (current_user.is_authenticated and
-                current_user.leadership is True)
+class AssistantsView(AdminModelView):
+    column_labels = dict(
+        employee='Assistant'
+    )
+    can_export = True
 
-    def inaccessible_callback(self, name, **kwargs):
-        # redirect to login page if user doesn't have access
-        return redirect(url_for('login', next=request.url))
 
+class WorkshopView(AdminModelView):
     create_modal = True
     edit_modal = True
     can_export = True
@@ -60,15 +53,7 @@ class WorkshopView(ModelView):
     )
 
 
-class ResponseView(ModelView):
-    def is_accessible(self):
-        return (current_user.is_authenticated and
-                current_user.leadership is True)
-
-    def inaccessible_callback(self, name, **kwargs):
-        # redirect to login page if user doesn't have access
-        return redirect(url_for('login', next=request.url))
-
+class ResponseView(AdminModelView):
     column_display_pk = True
     column_default_sort = ('id', False)
     can_export = True
@@ -88,8 +73,9 @@ class AnalyticsView(BaseView):
         return self.render('admin/analytics_index.html', user=current_user)
 
 
-admin.add_view(AdminModelView(User, db.session))
+admin.add_view(UserView(User, db.session))
 admin.add_view(EmployeeView(Employee, db.session))
+admin.add_view(AssistantsView(Assistants, db.session))
 admin.add_view(WorkshopView(Workshop, db.session))
 admin.add_view(ResponseView(Response, db.session))
 admin.add_view(AnalyticsView(name='Analytics', endpoint='analytics'))

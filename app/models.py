@@ -3,14 +3,25 @@ from app import db, cache
 from datetime import datetime, UTC
 from app.users import User
 
-# association table
-ta_assignment = db.Table(
-    'assistants',
-    # ForeignKey constraints that column to only allow values that are present in
-    # the corresponding table (almost always the primary key for their owning table)
-    db.Column('employee_id', db.Integer, db.ForeignKey('employee.id')),
-    db.Column('workshop_id', db.Integer, db.ForeignKey('workshop.id'))
-)
+
+# association object
+class Assistants(db.Model):
+    __tablename__ = 'assistants'
+
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), primary_key=True)
+    workshop_id = db.Column(db.Integer, db.ForeignKey('workshop.id'), primary_key=True)
+
+    employee = db.relationship(
+        'Employee',
+        back_populates='assigned_ta'
+    )
+    workshop = db.relationship(
+        'Workshop',
+        back_populates='assistants'
+    )
+
+    def __repr__(self):
+        return '{}'.format(self.employee.name)
 
 
 # possible workaround pattern for bidirectional reference of User <-> Employee
@@ -34,9 +45,8 @@ class Employee(db.Model):
     degree = db.Column(db.String(32))
     university = db.Column(db.String(64))
     assigned_ta = db.relationship(
-        'Workshop',
-        secondary=ta_assignment,
-        backref=db.backref('assistants', lazy='joined'))
+        'Assistants',
+        back_populates='employee')
 
     assigned_instructor = db.relationship(
         'Workshop',
@@ -61,6 +71,10 @@ class Workshop(db.Model):
     workshop_venue = db.Column(db.String(64), nullable=False)
     class_size = db.Column(db.Integer, nullable=False)
     responses = db.relationship('Response', backref='workshop', lazy='dynamic')
+
+    assistants = db.relationship(
+        'Assistants',
+        back_populates='workshop')
 
     def __repr__(self):
         # past = arrow.get(self.workshop_start).humanize()
