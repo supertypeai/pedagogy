@@ -1,6 +1,7 @@
+# import arrow
 from app import db, cache
 from datetime import datetime, UTC
-import arrow
+from app.users import User
 
 # association table
 ta_assignment = db.Table(
@@ -11,9 +12,22 @@ ta_assignment = db.Table(
     db.Column('workshop_id', db.Integer, db.ForeignKey('workshop.id'))
 )
 
+
+# possible workaround pattern for bidirectional reference of User <-> Employee
+# class UserModel(User):
+#     # employee_email = db.relationship(
+#     #     'Employee', backref=db.backref('signin_email')
+#     # )
+#     pass
+
+
 class Employee(db.Model):
+    __tablename__ = 'employee'
+
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(64), db.ForeignKey('user.email'))
+    email = db.Column(db.String(64),
+                      db.ForeignKey('user.email')
+                      )
     name = db.Column(db.String(64), unique=True)
     join_date = db.Column(db.Date)
     active = db.Column(db.Boolean, default=True, nullable=False)
@@ -22,7 +36,7 @@ class Employee(db.Model):
     assigned_ta = db.relationship(
         'Workshop',
         secondary=ta_assignment,
-        backref=db.backref('assistants', lazy='dynamic'))
+        backref=db.backref('assistants', lazy='joined'))
 
     assigned_instructor = db.relationship(
         'Workshop',
@@ -31,11 +45,14 @@ class Employee(db.Model):
     def __repr__(self):
         return '{}'.format(self.name)
 
+
 class Workshop(db.Model):
+    __tablename__ = 'workshop'
+
     id = db.Column(db.Integer, primary_key=True)
     workshop_name = db.Column(db.String(64))
     workshop_category = db.Column(db.Enum(
-        "Academy", "DSS", "Corporate", "Weekend", "Others", 
+        "Academy", "DSS", "Corporate", "Weekend", "Others",
         name="workshop_category"), nullable=False)
     workshop_instructor = db.Column(db.Integer, db.ForeignKey(
         'employee.id'), nullable=False)
@@ -46,16 +63,20 @@ class Workshop(db.Model):
     responses = db.relationship('Response', backref='workshop', lazy='dynamic')
 
     def __repr__(self):
-        past = arrow.get(self.workshop_start).humanize()
-        # return '{} on {}'.format(self.workshop_name, self.workshop_start)
-        return '{}, {}'.format(self.workshop_name, past)
-    
+        # past = arrow.get(self.workshop_start).humanize()
+        # return '{}, {}'.format(self.workshop_name, past)
+        return '{}, on {}'.format(self.workshop_name, self.workshop_start.strftime("%B %d, %Y"))
+
     @cache.memoize(50)
     def printtime(self):
-        past = arrow.get(self.workshop_start).humanize()
-        return past
+        # time = arrow.get(self.workshop_start).humanize()
+        time = self.workshop_start.strftime("%B %d, %Y")
+        return time
+
 
 class Response(db.Model):
+    __tablename__ = 'response'
+
     id = db.Column(db.Integer, primary_key=True)
     workshop_id = db.Column(db.Integer, db.ForeignKey('workshop.id'), nullable=False)
     difficulty = db.Column(db.Integer)
