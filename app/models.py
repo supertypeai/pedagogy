@@ -11,13 +11,11 @@ class Assistants(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), primary_key=True)
     workshop_id = db.Column(db.Integer, db.ForeignKey('workshop.id'), primary_key=True)
 
-    employee = db.relationship(
-        'Employee',
-        back_populates='assigned_ta'
+    employee: db.Mapped["Employee"] = db.relationship(
+        # back_populates='assigned_ta'
     )
-    workshop = db.relationship(
-        'Workshop',
-        back_populates='assistants'
+    workshop: db.Mapped["Workshop"] = db.relationship(
+        # back_populates='assistants'
     )
 
     def __repr__(self):
@@ -44,9 +42,10 @@ class Employee(db.Model):
     active = db.Column(db.Boolean, default=True, nullable=False)
     degree = db.Column(db.String(32))
     university = db.Column(db.String(64))
-    assigned_ta = db.relationship(
-        'Assistants',
-        back_populates='employee')
+    assigned_ta: db.Mapped[list["Workshop"]] = db.relationship(
+        secondary='assistants',
+        back_populates='assistants',
+    )
 
     assigned_instructor = db.relationship(
         'Workshop',
@@ -72,9 +71,10 @@ class Workshop(db.Model):
     class_size = db.Column(db.Integer, nullable=False)
     responses = db.relationship('Response', backref='workshop', lazy='dynamic')
 
-    assistants = db.relationship(
-        'Assistants',
-        back_populates='workshop')
+    assistants: db.Mapped[list["Employee"]] = db.relationship(
+        secondary='assistants',
+        back_populates='assigned_ta',
+    )
 
     def __repr__(self):
         # past = arrow.get(self.workshop_start).humanize()
