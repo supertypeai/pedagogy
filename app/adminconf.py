@@ -52,6 +52,18 @@ class WorkshopView(AdminModelView):
         workshop_start=lambda v, c, m, p: m.workshop_start.replace(tzinfo=None)
     )
 
+    form_columns = (
+        'workshop_name',
+        'workshop_category',
+        'workshop_start',
+        'workshop_hours',
+        'workshop_venue',
+        'class_size',
+        'instructor',
+        'assistants',
+        # 'responses',
+    )
+
 
 class ResponseView(AdminModelView):
     column_display_pk = True

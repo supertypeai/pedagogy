@@ -42,9 +42,13 @@ class Employee(db.Model):
     active = db.Column(db.Boolean, default=True, nullable=False)
     degree = db.Column(db.String(32))
     university = db.Column(db.String(64))
+
+    # Note: change this to use association object Assistants instead of table
+    # if flask-admin > 1.6.1 does not show strange behavior with association objects
     assigned_ta: db.Mapped[list["Workshop"]] = db.relationship(
         secondary='assistants',
         back_populates='assistants',
+        overlaps='workshop,employee',
     )
 
     assigned_instructor = db.relationship(
@@ -71,9 +75,12 @@ class Workshop(db.Model):
     class_size = db.Column(db.Integer, nullable=False)
     responses = db.relationship('Response', backref='workshop', lazy='dynamic')
 
+    # Note: change this to use association object Assistants instead of table
+    # if flask-admin > 1.6.1 does not show strange behavior with association objects
     assistants: db.Mapped[list["Employee"]] = db.relationship(
         secondary='assistants',
         back_populates='assigned_ta',
+        overlaps='workshop,employee',
     )
 
     def __repr__(self):
